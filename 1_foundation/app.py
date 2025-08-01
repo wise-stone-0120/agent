@@ -1,3 +1,10 @@
+# 1. requirements.txt 는 파이선 모듈들을 적어놓는다.
+# 2. 파일명도 대소문자 구분한다. 못 찾네.
+# 3. .env는 강제로 지정해야 한다. uv run dotenv -f ../.env run -- uv run gradio deploy
+# 4. huggingface space website에서 api 들을 secret으로 등록하고 성공했다.
+# 5. 1_foundation 폴더 전체를 hugginface에서 space에 올려 놓고 가성 환경을 만들어준다. \
+#    따라서, 필요한 파일 및 자원은 해당 폴더 안에 있어야 한다.
+
 # import
 from openai import OpenAI
 from pypdf import PdfReader
@@ -19,12 +26,11 @@ def push(text):
     requests.post("https://api.pushover.net/1/messages.json",
                   data=payload)
 
-# tool #1
+# tool
 def record_user_details(email, name="Name not provided", notes="not provided"):
     push(f"Recording {name} with email {email} and notes {notes}")
     return {"recored":"ok"}
 
-# tool #2
 def record_unknown_question(question):
     push(f"Recording {question}")
     return {"recorded":"ok"}
@@ -79,13 +85,13 @@ class Me:
     def __init__(self):
         self.openai = OpenAI()
         self.name = "Inseok Park"
-        reader = PdfReader("../me/linkedIn.pdf")
+        reader = PdfReader("me/InseokPark.pdf")
         self.linkedin = ""
         for page in reader.pages:
             txt = page.extract_text()
             if txt:
                 self.linkedin += txt
-        with open("../me/aboutMe.txt", "r", encoding="utf-8") as f:
+        with open("me/aboutMe.txt", "r", encoding="utf-8") as f:
             self.summary = f.read()
         
     def system_prompt(self):
@@ -103,24 +109,26 @@ class Me:
         system_prompt += f"With this context, please chat with the user, always stay in character as {self.name}."
         return system_prompt
 
-    def handle_tool_call(tool_calls):
+    def handle_tool_call(self, tool_calls):
         results=[]
         for tool_call in tool_calls:
-            tool_name = tool_call.name
+            tool_name = tool_call.function.name
             arguments = json.loads(tool_call.function.arguments)
-            tool = globals.get(tool_name)
+
+            tool = globals().get(tool_name)
             result = tool(**arguments) if tool else {}
             results.append({"role":"tool", "content":json.dumps(result), "tool_call_id":tool_call.id})
 
         return results
     
     def chat(self, message, history):
-        messages = [{"role":"system", "content":self.system_prompt}] + history + [{"role":"user", "content":message}]
+        messages = [{"role":"system", "content":self.system_prompt()}] + history + [{"role":"user", "content":message}]
         done = False
         while not done:
             response = self.openai.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=messages
+                messages=messages,
+				tools=tools
             )
             if response.choices[0].finish_reason == "tool_calls":
                 message = response.choices[0].message
